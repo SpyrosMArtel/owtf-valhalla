@@ -14,6 +14,7 @@ from web import serializers
 from middleman import handler as middleman
 
 from dockerutils import get_owtf_c, commands
+from middleman.pool import  ThreadPool
 
 
 class IndexTemplateView(TemplateView):
@@ -148,15 +149,15 @@ class Stop(APIView):
         else:
             return HttpResponse('Failed!')
 
-        
+
 class Commands(APIView):
     """Get a command and the pass it on to the associated container"""
 
     def get(self, request, *args, **kwargs):
-        
+
         return Response(commands, status=status.HTTP_200_OK)
 
-        
+
 class Execute(APIView):
     """Get a command and the pass it on to the associated container"""
 
@@ -184,9 +185,26 @@ class Execute(APIView):
 
             request_data = serializers.CommandSerializer(data=request.data)
             if request_data.is_valid():
-                image.results.append(middleman.send_for_execution(image.ip_address, image.port, request_data.data))
+                # 1) Init a Thread pool with the desired number of threads
+                if not hasattr(self, 'pool'):
+                    # the number of in ThreadPool constructor
+                    # is the total number of threads, that way we can have parallel execution
+                    self.pool = ThreadPool(5)
+
+                # we need to get and add all the commands from the client
+                # at this moment for testing it may be good to create a number of similar requests
+                # with a loop like so:
+                # for i in range(100):
+                #     self.pool.add_task(middleman.send_for_execution, image.ip_address, image.port, request_data.data)
+                self.pool.add_task(middleman.send_for_execution, image.ip_address, image.port, request_data.data)
+                image.results.append(self.pool.wait_completion())
+
                 serializer = serializers.OwtfContainerSerializer(image)
                 return Response(serializer.data, status=status.HTTP_200_OK)
+
+                # image.results.append(middleman.send_for_execution(image.ip_address, image.port, request_data.data))
+                # serializer = serializers.OwtfContainerSerializer(image)
+                # return Response(serializer.data, status=status.HTTP_200_OK)
 
             pprint(request_data.errors)
             return HttpResponse('Command is not valid!')
