@@ -30,9 +30,10 @@ class ThreadPool:
         # was to use another Queue
         self.result_queue = Queue(num_threads)
         self.counter_tasks = 0
-        worker = Worker(self.tasks)
-        worker.set_result_queue(self.result_queue)
-        for _ in range(num_threads): Worker(self.tasks)
+        for _ in range(num_threads):
+            worker = Worker(self.tasks)
+            worker.set_result_queue(self.result_queue)
+
 
     def add_task(self, func, *args, **kargs):
         """Add a task to the queue"""
@@ -44,4 +45,4 @@ class ThreadPool:
         self.tasks.join()
         # after all the tasks are done, we return a list of all the results.
         # I believe it would be nice if we can make the Queue a part of views instead (just an idea)
-        return [self.result_queue.get() for _ in xrange(self.counter)]
+        return [self.result_queue.get() for _ in xrange(self.counter_tasks)]
