@@ -14,8 +14,11 @@ from web import serializers
 from middleman import handler as middleman
 
 from dockerutils import get_owtf_c, commands
-from middleman.pool import  ThreadPool
-
+# ThreadPool
+from middleman.pool import TaskPool
+# from random import choice
+# import string
+import Queue
 
 class IndexTemplateView(TemplateView):
     template_name = 'index.html'
@@ -185,19 +188,24 @@ class Execute(APIView):
 
             request_data = serializers.CommandSerializer(data=request.data)
             if request_data.is_valid():
-                # 1) Init a Thread pool with the desired number of threads
+                result_queue = Queue.Queue(10)
                 if not hasattr(self, 'pool'):
-                    # the number of in ThreadPool constructor
-                    # is the total number of threads, that way we can have parallel execution
-                    self.pool = ThreadPool(5)
+                    # Init a TaskPool with the desired number of threads
+                    # currently it works with only one thread :(
+                    self.pool = TaskPool(1)
 
-                # we need to get and add all the commands from the client
-                # at this moment for testing it may be good to create a number of similar requests
-                # with a loop like so:
-                # for i in range(100):
-                #     self.pool.add_task(middleman.send_for_execution, image.ip_address, image.port, request_data.data)
-                self.pool.add_task(middleman.send_for_execution, image.ip_address, image.port, request_data.data)
-                image.results.append(self.pool.wait_completion())
+                data = request_data.data
+
+                # at this moment for testing we create a number of similar requests
+                for i in range(5):
+                    data['command'] = 'sleep 0.25s'
+                    # data['command'] = 'echo ' + ''.join(choice(string.ascii_uppercase + string.digits) for _ in range(10))
+                    self.pool.add_task(middleman.send_for_execution, image.ip_address, image.port, data)
+
+                # image.results.append(result_queue.get() for _ in range(10))
+                results = self.pool.wait()
+                for result in results:
+                    image.results.append(result)
 
                 serializer = serializers.OwtfContainerSerializer(image)
                 return Response(serializer.data, status=status.HTTP_200_OK)
