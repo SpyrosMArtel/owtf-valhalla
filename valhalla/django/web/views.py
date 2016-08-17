@@ -14,6 +14,7 @@ from valhalla.django.web import serializers
 from valhalla.middleman import handler as middleman
 
 from valhalla.dockerutils import get_owtf_c, commands
+from valhalla.middleman.thread_proxy import ThreadProxy
 
 
 class IndexTemplateView(TemplateView):
@@ -185,6 +186,21 @@ class Execute(APIView):
             request_data = serializers.CommandSerializer(data=request.data)
             if request_data.is_valid():
                 image.results.append(middleman.send_for_execution(image, request_data.data))
+                serializer = serializers.OwtfContainerSerializer(image)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+
+            request_data = serializers.CommandSerializer(data=request.data, many=True)
+            if request_data.is_valid():
+                # for now some simple testing of the thread proxy
+                if not hasattr(self, 'thread_proxy'):
+                    self.thread_proxy = ThreadProxy()
+
+                self.thread_proxy.create_service(image.image_id, image.results)
+                for task in request.data:
+                    job = (middleman.send_for_execution, task, image)
+                    self.thread_proxy.add_task(image.image_id, job)
+
+                self.thread_proxy.execute(image.image_id)
                 serializer = serializers.OwtfContainerSerializer(image)
                 return Response(serializer.data, status=status.HTTP_200_OK)
 
